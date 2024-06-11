@@ -1,4 +1,4 @@
-use crate::ast::{ASTNode, TextNode};
+use crate::ast::{ASTNode, TextNode, VariableNode};
 
 const OPEN_EXPRESSION_CHAR: char = '{';
 const CLOSE_EXPRESSION_CHAR: char = '}';
@@ -38,10 +38,29 @@ fn tokenize(template: &str) -> Vec<String> {
 }
 
 pub fn parse(template: &str) -> ASTNode {
-    let tokens = tokenize(template);
-    let root = TextNode {
+    let mut tokens = tokenize(template);
+    let mut root = TextNode {
         children: vec!(), content: String::new()
     };
+
+    for token in tokens.drain(..) {
+        if token.starts_with(OPEN_EXPRESSION_CHAR.to_string().repeat(2).as_str()) && token.ends_with(&CLOSE_EXPRESSION_CHAR.to_string().repeat(2).as_str()) {
+            let var: &str = &token[2..token.len()-2];
+            root.children.push(ASTNode::VariableNode(
+                VariableNode {
+                    variable: var.to_owned()
+                }
+            ));
+        } else {
+            root.children.push(ASTNode::TextNode(
+                TextNode {
+                    children: vec!(),
+                    content: token
+                }
+            ))
+        }
+    }
+
 
     ASTNode::TextNode(root)
 }
@@ -55,7 +74,9 @@ fn append_token(current_token: &mut String, tokens: &mut Vec<String>) {
 
 #[cfg(test)]
 mod tests {
-    use super::tokenize;
+    use crate::ast::{TextNode, ASTNode};
+
+    use super::{parse, tokenize};
 
     #[test]
     fn tokenize_simple() {
@@ -67,5 +88,33 @@ mod tests {
         assert_eq!("{{expression}}", tokens.get(0).unwrap());
         assert_eq!(" here ", tokens.get(1).unwrap());
         assert_eq!("{{another expr}}", tokens.get(2).unwrap());
+    }
+
+    #[test]
+    fn parse_simple() {
+        let template = "Hello {{harry}}.";
+    
+        let ast = parse(template);
+    
+        match ast {
+            ASTNode::TextNode(TextNode { children: nodes, content }) => {
+                assert_eq!(nodes.len(), 3, "Invalid number of root children.");
+                assert_eq!(content, "");
+    
+                match (&nodes[0], &nodes[1], &nodes[2]) {
+                    (
+                        ASTNode::TextNode(node1),
+                        ASTNode::VariableNode(node2),
+                        ASTNode::TextNode(node3)
+                    ) => {
+                        assert_eq!(node1.content, "Hello ");
+                        assert_eq!(node2.variable, "harry");
+                        assert_eq!(node3.content, ".");
+                    }
+                    _ => assert_eq!(-1, 1, "Nodes are of incorrect type or order!"),
+                }
+            }
+            _ => assert_eq!(-1, 1, "Invalid root node."),
+        }
     }
 }
